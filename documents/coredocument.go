@@ -2,7 +2,6 @@ package documents
 
 import (
 	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 	"strings"
 
@@ -142,7 +141,7 @@ func (cd *CoreDocument) setSalts() error {
 		return err
 	}
 
-	cd.Document.CoredocumentSalts = ConvertToProtoSalts(pSalts)
+	cd.Document.Salts = ConvertToProtoSalts(pSalts)
 	return nil
 }
 
@@ -305,7 +304,7 @@ func (cd *CoreDocument) DocumentRootTree() (tree *proofs.DocumentTree, err error
 	sigProperty := NewLeafProperty(SignaturesField, compactProperties(SignaturesField))
 	sigLeafList := make([]proofs.LeafNode, len(cd.Document.Signatures)+1)
 	sigLengthNode := proofs.LeafNode{
-		Property: sigProperty.LengthProp(proofs.DefaultSaltsLengthSuffix),
+		Property: sigProperty.LengthProp(proofs.DefaultReadablePropertyLengthSuffix),
 		Salt:     make([]byte, idSize),
 		Value:    []byte(fmt.Sprintf("%d", len(cd.Document.Signatures))),
 	}
@@ -359,15 +358,18 @@ func (cd *CoreDocument) signingRootTree(docType string) (tree *proofs.DocumentTr
 	// create the signing tree with data root and coredoc root as siblings
 	tree = NewDefaultTreeWithPrefix(ConvertToProofSalts(cd.Document.CoredocumentSalts), SigningTreePrefix, compactProperties(SigningTreePrefix))
 	prefixProp := NewLeafProperty(SigningTreePrefix, compactProperties(SigningTreePrefix))
-
+	dataRootProp := NewLeafProperty(DataRootField, compactProperties(DataRootField))
+	dataRootProp.Parent = &prefixProp
+	cdRootProp := NewLeafProperty(CDRootField, compactProperties(CDRootField))
+	cdRootProp.Parent = &prefixProp
 	err = tree.AddLeaves([]proofs.LeafNode{
 		{
-			Property: prefixProp.FieldProp(DataRootField, binary.LittleEndian.Uint32(compactProperties(DataRootField))),
+			Property: dataRootProp,
 			Hash:     cd.Document.DataRoot,
 			Hashed:   true,
 		},
 		{
-			Property: prefixProp.FieldProp(CDRootField, binary.LittleEndian.Uint32(compactProperties(CDRootField))),
+			Property: cdRootProp,
 			Hash:     cdTree.RootHash(),
 			Hashed:   true,
 		},
@@ -394,9 +396,11 @@ func (cd *CoreDocument) documentTree(docType string) (tree *proofs.DocumentTree,
 	}
 
 	prefixProp := NewLeafProperty(CDTreePrefix, compactProperties(CDTreePrefix))
+	docTypePrefix := NewLeafProperty(DocumentTypeField, compactProperties(DocumentTypeField))
+	docTypePrefix.Parent = &prefixProp
 	// Adding document type as it is an excluded field in the tree
 	documentTypeNode := proofs.LeafNode{
-		Property: prefixProp.FieldProp(DocumentTypeField, binary.LittleEndian.Uint32(compactProperties(DocumentTypeField))),
+		Property: docTypePrefix,
 		Salt:     make([]byte, 32),
 		Value:    []byte(docType),
 	}
